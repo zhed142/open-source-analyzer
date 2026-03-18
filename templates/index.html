@@ -1,0 +1,586 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Анализатор кода</title>
+  <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/chartjs-plugin-datalabels"></script>
+  <style>
+    :root {
+      --dark-blue: #0a192f;
+      --navy: #172a45;
+      --light-navy: #303f60;
+      --lightest-navy: #465881;
+      --black: #020c1b;
+      --white: #e6f1ff;
+      --accent: #64ffda;
+      --accent-dark: #52d1b3;
+    }
+
+    * {
+      box-sizing: border-box;
+      margin: 0;
+      padding: 0;
+    }
+
+    body {
+      font-family: 'IBM Plex Mono', monospace;
+      background-color: var(--black);
+      color: var(--white);
+      min-height: 100vh;
+      padding: 20px;
+      line-height: 1.6;
+    }
+
+    .app-container {
+      max-width: 1400px;
+      margin: 0 auto;
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 20px;
+      height: calc(100vh - 40px);
+    }
+
+    .panel {
+      background: var(--dark-blue);
+      border-radius: 10px;
+      padding: 20px;
+      box-shadow: 0 8px 20px rgba(2, 12, 27, 0.5);
+      border: 1px solid var(--light-navy);
+      display: flex;
+      flex-direction: column;
+    }
+
+    h1 {
+      font-size: 1.8rem;
+      margin-bottom: 20px;
+      color: var(--accent);
+      font-weight: 600;
+    }
+
+    .tabs {
+      display: flex;
+      margin-bottom: 15px;
+      border-bottom: 1px solid var(--light-navy);
+    }
+
+    .tab {
+      padding: 8px 16px;
+      cursor: pointer;
+      font-weight: 500;
+      color: var(--white);
+      opacity: 0.7;
+      transition: all 0.3s ease;
+      border-bottom: 2px solid transparent;
+      margin-bottom: -1px;
+      font-size: 0.9rem;
+    }
+
+    .tab.active {
+      opacity: 1;
+      color: var(--accent);
+      border-bottom: 2px solid var(--accent);
+    }
+
+    .tab-content {
+      display: none;
+    }
+
+    .tab-content.active {
+      display: flex;
+      flex-direction: column;
+      flex-grow: 1;
+    }
+
+    textarea, input {
+      width: 100%;
+      padding: 12px;
+      background: var(--navy);
+      border: 1px solid var(--light-navy);
+      border-radius: 5px;
+      color: var(--white);
+      font-family: 'IBM Plex Mono', monospace;
+      font-size: 0.9rem;
+      margin-bottom: 12px;
+    }
+
+    textarea {
+      resize: none;
+      height: 180px;
+      flex-shrink: 0;
+    }
+
+    button {
+      background: transparent;
+      color: var(--accent);
+      border: 1px solid var(--accent);
+      border-radius: 5px;
+      padding: 10px 16px;
+      font-family: 'IBM Plex Mono', monospace;
+      cursor: pointer;
+      transition: all 0.3s ease;
+      margin-top: 8px;
+      flex-shrink: 0;
+      font-size: 0.9rem;
+    }
+
+    button:hover {
+      background: rgba(100, 255, 218, 0.1);
+    }
+
+    .output-container {
+      margin-top: 15px;
+      flex-grow: 1;
+      display: flex;
+      flex-direction: column;
+      min-height: 150px;
+      max-height: 250px;
+      overflow-y: auto;
+      background: var(--navy);
+      border: 1px solid var(--light-navy);
+      border-radius: 5px;
+      padding: 12px;
+    }
+
+    .chart-wrapper {
+      flex-grow: 1;
+      display: flex;
+      flex-direction: column;
+      height: 100%;
+    }
+
+    .chart-container {
+      height: 65%;
+      min-height: 200px;
+      position: relative;
+    }
+
+    ::-webkit-scrollbar {
+      width: 8px;
+      height: 8px;
+      background-color: transparent;
+    }
+
+    ::-webkit-scrollbar-track {
+      background-color: transparent;
+      border-radius: 4px;
+    }
+
+    ::-webkit-scrollbar-thumb {
+      background-color: var(--light-navy);
+      border-radius: 4px;
+    }
+
+    ::-webkit-scrollbar-thumb:hover {
+      background-color: var(--lightest-navy);
+    }
+
+    .chart-legend {
+      margin-top: 15px;
+      padding: 12px;
+      background: var(--navy);
+      border: 1px solid var(--light-navy);
+      border-radius: 5px;
+      display: flex;
+      flex-wrap: wrap;
+      justify-content: center;
+      gap: 10px;
+      max-height: 30%;
+      overflow-y: auto;
+    }
+
+    .legend-item {
+      display: flex;
+      align-items: center;
+      margin: 3px;
+      font-size: 0.8rem;
+    }
+
+    .legend-color {
+      width: 12px;
+      height: 12px;
+      border-radius: 2px;
+      margin-right: 6px;
+    }
+
+    .file-result {
+      padding: 8px;
+      margin-bottom: 6px;
+      background: var(--light-navy);
+      border-radius: 3px;
+      font-size: 0.85rem;
+    }
+
+    .repo-info {
+      margin-bottom: 15px;
+      padding: 12px;
+      background: var(--light-navy);
+      border-radius: 5px;
+    }
+
+    .repo-info-item {
+      margin-bottom: 8px;
+      display: flex;
+    }
+
+    .repo-info-label {
+      font-weight: 500;
+      color: var(--accent);
+      min-width: 120px;
+    }
+
+    .repo-analysis {
+      margin-bottom: 15px;
+      padding: 12px;
+      background: var(--light-navy);
+      border-radius: 5px;
+      font-style: italic;
+    }
+
+    @media (max-width: 1200px) {
+      .app-container {
+        grid-template-columns: 1fr;
+        height: auto;
+      }
+
+      .chart-container {
+        height: 300px;
+      }
+    }
+
+    @media (max-width: 768px) {
+      body {
+        padding: 15px;
+      }
+
+      .panel {
+        padding: 15px;
+      }
+
+      h1 {
+        font-size: 1.5rem;
+        margin-bottom: 15px;
+      }
+
+      textarea {
+        height: 150px;
+      }
+
+      .repo-info-item {
+        flex-direction: column;
+      }
+
+      .repo-info-label {
+        margin-bottom: 3px;
+      }
+    }
+  </style>
+  <link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+</head>
+<body>
+  <div class="app-container">
+    <div class="panel">
+      <h1>Анализатор кода</h1>
+
+      <div class="tabs">
+        <div class="tab active" onclick="switchTab('code-tab')">Анализ кода</div>
+        <div class="tab" onclick="switchTab('repo-tab')">Анализ репозитория</div>
+      </div>
+
+      <div id="code-tab" class="tab-content active">
+        <textarea id="codeInput" placeholder="Вставьте ваш код здесь..."></textarea>
+        <button onclick="analyze('code')">Проанализировать код</button>
+
+        <div class="output-container" id="output">
+          <div id="single-result"></div>
+          <div id="repo-results"></div>
+        </div>
+      </div>
+
+      <div id="repo-tab" class="tab-content">
+        <input type="text" id="githubUrl" placeholder="https://github.com/username/repository">
+        <button onclick="analyze('repo')">Проанализировать репозиторий</button>
+
+        <div class="output-container" id="repo-output">
+          <div id="repo-info-container"></div>
+          <div id="repo-analysis-container"></div>
+          <div id="repo-single-result"></div>
+          <div id="repo-results-list"></div>
+        </div>
+      </div>
+    </div>
+
+    <div class="panel">
+      <div class="chart-wrapper">
+        <div class="chart-container">
+          <canvas id="chart"></canvas>
+        </div>
+        <div class="chart-legend" id="chart-legend"></div>
+      </div>
+    </div>
+  </div>
+
+  <script>
+    let chart;
+
+    function initChart() {
+      const ctx = document.getElementById('chart').getContext('2d');
+      chart = new Chart(ctx, {
+        type: 'pie',
+        data: {
+          labels: [],
+          datasets: [{
+            data: [],
+            backgroundColor: [
+              '#1f77b4', '#ff7f0e', '#2ca02c', '#d62728', '#9467bd',
+              '#8c564b', '#e377c2', '#7f7f7f'
+            ],
+            borderColor: '#0a192f',
+            borderWidth: 2
+          }]
+        },
+        options: {
+          responsive: true,
+          maintainAspectRatio: false,
+          plugins: {
+            datalabels: {
+              color: '#e6f1ff',
+              font: {
+                size: 15,
+                weight: 'bold'
+              },
+              formatter: (value, context) => {
+                const total = context.chart.data.datasets[0].data.reduce((a, b) => a + b, 0);
+                const percentage = ((value / total) * 100).toFixed(1);
+                return percentage >= 5 ? `${percentage}%` : '';
+              },
+              display: (context) => {
+                // Показывать label при наведении или если процент >= 5
+                const active = context.active;
+                if (active) return true;
+
+                const total = context.chart.data.datasets[0].data.reduce((a, b) => a + b, 0);
+                const percentage = ((context.dataset.data[context.dataIndex] / total) * 100).toFixed(1);
+                return percentage >= 5;
+              }
+            },
+            legend: {
+              display: false
+            },
+            tooltip: {
+              callbacks: {
+                label: function(context) {
+                  const label = context.label || '';
+                  const value = context.raw || 0;
+                  const total = context.dataset.data.reduce((a, b) => a + b, 0);
+                  const percentage = ((value / total) * 100).toFixed(1);
+                  return `${label}: ${value} (${percentage}%)`;
+                }
+              }
+            }
+          },
+          onHover: (event, chartElements) => {
+            // Принудительное обновление при наведении для отображения скрытых меток
+            if (chartElements && chartElements.length) {
+              chart.update();
+            }
+          }
+        },
+        plugins: [ChartDataLabels]
+      });
+    }
+
+
+    function updateLegend(labels, colors) {
+      const legendContainer = document.getElementById('chart-legend');
+      legendContainer.innerHTML = '';
+
+      labels.forEach((label, index) => {
+        const legendItem = document.createElement('div');
+        legendItem.className = 'legend-item';
+
+        const colorBox = document.createElement('div');
+        colorBox.className = 'legend-color';
+        colorBox.style.backgroundColor = colors[index];
+
+        const labelText = document.createElement('span');
+        labelText.textContent = label;
+
+        legendItem.appendChild(colorBox);
+        legendItem.appendChild(labelText);
+        legendContainer.appendChild(legendItem);
+      });
+    }
+
+    function updateChart() {
+      fetch('/get_chart_data')
+        .then(response => response.json())
+        .then(data => {
+          chart.data.labels = data.labels;
+          chart.data.datasets[0].data = data.values;
+          chart.update();
+          updateLegend(data.labels, chart.data.datasets[0].backgroundColor);
+        });
+    }
+
+    function switchTab(tabId) {
+      document.querySelectorAll('.tab-content').forEach(tab => {
+        tab.classList.remove('active');
+      });
+      document.querySelectorAll('.tab').forEach(btn => {
+        btn.classList.remove('active');
+      });
+
+      document.getElementById(tabId).classList.add('active');
+      document.querySelector(`.tab[onclick="switchTab('${tabId}')"]`).classList.add('active');
+    }
+
+    function createRepoInfoElement(repoInfo) {
+      const container = document.createElement('div');
+      container.className = 'repo-info';
+
+      const html = `
+        <div class="repo-info-item">
+          <span class="repo-info-label">Описание:</span>
+          <span>${repoInfo.description || 'Отсутствует'}</span>
+        </div>
+        <div class="repo-info-item">
+          <span class="repo-info-label">Язык:</span>
+          <span>${repoInfo.language || 'Не указан'}</span>
+        </div>
+        <div class="repo-info-item">
+          <span class="repo-info-label">Звёзды:</span>
+          <span>${repoInfo.stars || 0}</span>
+        </div>
+        <div class="repo-info-item">
+          <span class="repo-info-label">Форки:</span>
+          <span>${repoInfo.forks || 0}</span>
+        </div>
+      `;
+
+      container.innerHTML = html;
+      return container;
+    }
+
+    function createRepoAnalysisElement(analysis) {
+      const container = document.createElement('div');
+      container.className = 'repo-analysis';
+      container.textContent = analysis;
+      return container;
+    }
+
+    function analyze(type) {
+      const output = type === 'code'
+        ? document.getElementById('single-result')
+        : document.getElementById('repo-single-result');
+
+      const resultsContainer = type === 'code'
+        ? document.getElementById('repo-results')
+        : document.getElementById('repo-results-list');
+
+      const repoInfoContainer = document.getElementById('repo-info-container');
+      const repoAnalysisContainer = document.getElementById('repo-analysis-container');
+
+      output.innerHTML = '';
+      resultsContainer.innerHTML = '';
+      repoInfoContainer.innerHTML = '';
+      repoAnalysisContainer.innerHTML = '';
+
+      if (type === 'code') {
+        const code = document.getElementById('codeInput').value;
+        if (!code.trim()) {
+          output.innerHTML = '<span style="color: #ff6584;">Пожалуйста, введите код для анализа</span>';
+          return;
+        }
+
+        fetch('/analyze', {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json'
+          },
+          body: JSON.stringify({ code: code })
+        })
+        .then(response => response.json())
+        .then(data => {
+          if (data.error) {
+            output.innerHTML = `<span style="color: #ff6584;">Ошибка: ${data.error}</span>`;
+          } else {
+            output.innerHTML = `<strong>Результат анализа:</strong> ${data.analysis}`;
+            updateChart();
+          }
+        })
+        .catch(error => {
+          output.innerHTML = `<span style="color: #ff6584;">Произошла ошибка: ${error.message}</span>`;
+        });
+      }
+      else if (type === 'repo') {
+        const githubUrl = document.getElementById('githubUrl').value;
+        if (!githubUrl.trim()) {
+          output.innerHTML = '<span style="color: #ff6584;">Пожалуйста, введите URL репозитория</span>';
+          return;
+        }
+
+        output.innerHTML = '<span style="color: #64ffda;">Анализируем репозиторий, пожалуйста подождите...</span>';
+
+        fetch('/analyze', {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json'
+          },
+          body: JSON.stringify({ github_url: githubUrl })
+        })
+        .then(response => response.json())
+        .then(data => {
+          if (data.error) {
+            output.innerHTML = `<span style="color: #ff6584;">Ошибка: ${data.error}</span>`;
+          } else {
+            output.innerHTML = `<strong>${data.code_analysis}</strong>`;
+
+            if (data.repo_info) {
+              repoInfoContainer.appendChild(createRepoInfoElement(data.repo_info));
+            }
+
+            if (data.repo_analysis) {
+              repoAnalysisContainer.appendChild(createRepoAnalysisElement(data.repo_analysis));
+            }
+
+            if (data.details && data.details.length > 0) {
+              data.details.forEach(file => {
+                const fileResult = document.createElement('div');
+                fileResult.className = 'file-result';
+
+                const fileDiv = document.createElement('div');
+                const fileLabel = document.createElement('strong');
+                fileLabel.textContent = 'Файл: ';
+                fileDiv.appendChild(fileLabel);
+                fileDiv.appendChild(document.createTextNode(file.file));
+
+                const resultDiv = document.createElement('div');
+                const resultLabel = document.createElement('strong');
+                resultLabel.textContent = 'Результат: ';
+                resultDiv.appendChild(resultLabel);
+                resultDiv.appendChild(document.createTextNode(file.result));
+
+                fileResult.appendChild(fileDiv);
+                fileResult.appendChild(resultDiv);
+                resultsContainer.appendChild(fileResult);
+              });
+            }
+
+            updateChart();
+          }
+        })
+        .catch(error => {
+          output.innerHTML = `<span style="color: #ff6584;">Произошла ошибка: ${error.message}</span>`;
+        });
+      }
+    }
+
+    document.addEventListener('DOMContentLoaded', () => {
+      initChart();
+      updateChart();
+    });
+  </script>
+</body>
+</html>
